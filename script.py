@@ -1,11 +1,33 @@
 import requests
 import json
+import re
+from datetime import datetime
+from requests.packages.urllib3.exceptions import InsecureRequestWarning
 
-def fetch_api_version_hash():
-    url = "https://setup.rbxcdn.com/versionQTStudio"
-    response = requests.get(url)
-    response.raise_for_status()
-    return response.text.strip()
+requests.packages.urllib3.disable_warnings(InsecureRequestWarning)
+
+def fetch_windows_player_version():
+    url = "https://setup.roblox.com/DeployHistory.txt"
+    try:
+        response = requests.get(url, verify=False)
+        response.raise_for_status()
+        content = response.text
+
+        pattern = r"New Studio64 version-([a-f0-9]+) at (\d{1,2}/\d{1,2}/\d{4} \d{1,2}:\d{2}:\d{2} [AP]M)"
+        matches = re.findall(pattern, content)
+
+        if not matches:
+            raise ValueError("No WindowsPlayer versions found in DeployHistory.txt")
+
+        versions = [(version, datetime.strptime(date_str, "%m/%d/%Y %I:%M:%S %p")) for version, date_str in matches]
+
+        latest_version, _ = max(versions, key=lambda x: x[1])
+        return f'version-{latest_version}'
+
+    except requests.RequestException as e:
+        raise RuntimeError(f"Error fetching DeployHistory.txt: {str(e)}")
+    except Exception as e:
+        raise RuntimeError(f"Error processing DeployHistory.txt: {str(e)}")
 
 def fetch_api_dump(version_hash):
     url = f"https://setup.rbxcdn.com/{version_hash}-API-Dump.json"
@@ -54,8 +76,10 @@ def save_to_file(data, filename):
         json.dump(data, f, indent=2)
 
 def main():
-    print("Fetching Roblox API version hash...")
-    version_hash = fetch_api_version_hash()
+    print("Fetching WindowsPlayer version hash...")
+    version_hash = fetch_windows_player_version()
+    
+    print(f"Version hash: {version_hash}")
     
     print("Fetching Roblox API dump...")
     api_dump = fetch_api_dump(version_hash)
@@ -64,7 +88,7 @@ def main():
     extracted_data = extract_data(api_dump)
     
     print("Saving to file...")
-    save_to_file(extracted_data, f'${version_hash}.json')
+    save_to_file(extracted_data, f'{version_hash}.json')
     
     print(f"Done! Extracted data for {len(extracted_data['Properties'])} classes.")
 
